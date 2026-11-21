@@ -87,3 +87,37 @@ Useful official guides:
 - GitHub Pages: <https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site>
 - Configure publishing source: <https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site>
 - TMDB FAQ: <https://developer.themoviedb.org/docs/faq>
+
+
+## WiseBox 2.0: authorized full-movie playback and legal downloads
+
+This update adds a legal-watch section to movie and TV detail pages.
+
+### What it does
+- Displays country-specific streaming/rent/buy provider availability from TMDB's watch-provider endpoint (default country: NG).
+- Links users to the official availability page returned by TMDB.
+- Supports an owner-maintained catalogue of explicitly authorized embedded players and downloadable files.
+- Keeps the existing YouTube trailer section separate. A trailer is never treated as a full movie.
+
+### Important rights rule
+TMDB provides metadata and provider availability, not full copyrighted movie files or permission to stream them. Do not add a playback or download URL unless you have verified that the rights holder or applicable license explicitly permits that use. A publicly accessible URL is not proof of permission. Do not bypass DRM, paywalls, or provider restrictions.
+
+### Registering an authorized title
+Edit `js/watch-sources.js`. The example there is intentionally commented out and is not a working source. Add a record keyed by TMDB media type and ID, for example `movie-12345` or `tv-67890`, with:
+- `rightsVerified: true`
+- `rightsEvidence`: a URL or documented reference to the permission/license
+- `licenseName`: the license or permission basis
+- `playbackUrl`: an HTTPS embed URL, only if embedding is allowed
+- `downloadUrl`: an HTTPS download URL, only if downloading is allowed
+- `attribution`: any required credit
+
+Only set `rightsVerified` to true after checking the source's rights and the specific permissions. For Creative Commons content, check the exact license conditions and attribution requirements. For Internet Archive items, verify rights item-by-item; an Archive listing alone is not a guarantee of copyright status.
+
+### Change the provider country
+In `js/watch-sources.js`, change `COUNTRY_CODE` to the two-letter country code you want (for example `NG`, `US`, or `GB`). Provider availability varies by country.
+
+### TMDB and JustWatch attribution
+This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming availability data is provided by JustWatch via TMDB. Keep the attribution notice visible. Review current TMDB API terms and licensing before commercial use.
+
+### API key reminder
+The starter project uses a browser-side TMDB v3 API key. Anyone can inspect a key shipped in public JavaScript. Do not publish a production secret this way; use a serverless/backend proxy before public production deployment. The uploaded ZIP's `js/config.js` contains a placeholder, so enter your own TMDB v3 API key locally after extracting this update.
