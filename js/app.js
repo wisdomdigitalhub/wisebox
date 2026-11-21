@@ -65,12 +65,51 @@
   async function loadMovies(){try{const d=await api("/movie/popular",{page:state.moviesPage});renderGrid("#moviesGrid",d.results);$("#moviesGrid").dataset.loaded="1";$("#moviesMore").style.display=state.moviesPage<d.total_pages?"flex":"none"}catch(e){toast(e.message)}}
   async function loadTV(){try{const d=await api("/tv/popular",{page:state.tvPage});renderGrid("#tvPageGrid",d.results.map(x=>({...x,media_type:"tv"})));$("#tvPageGrid").dataset.loaded="1";$("#tvMore").style.display=state.tvPage<d.total_pages?"flex":"none"}catch(e){toast(e.message)}}
   async function searchTitles(q){if(!q.trim()){renderGrid("#searchGrid",[]);$("#searchStatus").textContent="Start typing to discover something.";return}$("#searchStatus").textContent="Searching WiseBox…";try{const d=await api(`/search/${state.searchType}`,{query:q,include_adult:false,page:1});const items=d.results.filter(x=>x.media_type!=="person"||state.searchType==="multi");renderGrid("#searchGrid",items);$("#searchStatus").textContent=`${d.total_results.toLocaleString()} results for “${q}”`}catch(e){$("#searchStatus").textContent=e.message}}
+  function safeHttpsUrl(value){
+    try { const u=new URL(value); return u.protocol==="https:" ? u.href : ""; } catch { return ""; }
+  }
+  function renderWatchOptions(type,id,data){
+    const key=`${type}-${id}`;
+    const source=(window.WISEBOX_WATCH_SOURCES?.TITLES||{})[key];
+    let html=`<section class="detail-section watch-section"><p class="section-kicker">LEGAL WATCH OPTIONS</p><h2>Watch the <em>full title.</em></h2>`;
+    const playback=source?.rightsVerified===true && source?.rightsEvidence && safeHttpsUrl(source.playbackUrl);
+    const download=source?.rightsVerified===true && source?.rightsEvidence && safeHttpsUrl(source.downloadUrl);
+    if(playback){
+      html+=`<div class="authorized-player-wrap"><p class="watch-note">Authorized source${source.licenseName?` · ${escapeHTML(source.licenseName)}`:""}</p><iframe class="authorized-player" src="${escapeHTML(playback)}" title="Authorized full title player" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>${source.attribution?`<p class="watch-attribution">${escapeHTML(source.attribution)}</p>`:""}</div>`;
+    } else {
+      html+=`<div class="watch-empty"><b>No verified in-page full-movie source is registered for this title yet.</b><span>WiseBox will only embed a film after its rights and permission to embed have been checked.</span></div>`;
+    }
+    if(download){
+      html+=`<a class="primary-button watch-download" href="${escapeHTML(download)}" target="_blank" rel="noopener noreferrer"><span>Download from authorized source ↓</span></a>`;
+    } else {
+      html+=`<p class="watch-note">No authorized direct download is registered for this title.</p>`;
+    }
+    const region=(window.WISEBOX_WATCH_SOURCES?.COUNTRY_CODE||"NG").toUpperCase();
+    const regionData=data?.results?.[region];
+    if(regionData){
+      const groups=[["Streaming",regionData.flatrate],["Free / with ads",regionData.free],["Rent",regionData.rent],["Buy",regionData.buy]];
+      for(const [label,providers] of groups){
+        if(!providers?.length) continue;
+        html+=`<div class="provider-group"><h3>${label}</h3><div class="provider-list">${providers.map(p=>`<span class="provider-chip">${p.logo_path?`<img src="${poster(p.logo_path,"w92")}" alt="">`:""}${escapeHTML(p.provider_name)}</span>`).join("")}</div></div>`;
+      }
+      if(regionData.link) html+=`<a class="text-link provider-link" href="${escapeHTML(safeHttpsUrl(regionData.link))}" target="_blank" rel="noopener noreferrer">See official availability in ${region} ↗</a>`;
+    } else {
+      html+=`<p class="watch-note">No streaming-provider listing was returned for region ${escapeHTML(region)}. Availability varies by country.</p>`;
+    }
+    html+=`<p class="watch-attribution">Streaming availability data provided by JustWatch via TMDB. Provider listings are not direct video streams.</p></section>`;
+    return html;
+  }
   async function loadDetails(type,id){
     const target=$("#detailContent");target.innerHTML='<div class="empty-state">Loading your title…</div>';
     try{const [d,credits,videos,recs]=await Promise.all([api(`/${type}/${id}`),api(`/${type}/${id}/credits`),api(`/${type}/${id}/videos`),api(`/${type}/${id}/recommendations`)]);
-      const item={...d,media_type:type};const bg=poster(d.backdrop_path,cfg.BACKDROP_SIZE||"w1280");const p=poster(d.poster_path);const title=escapeHTML(titleOf(d));const genres=(d.genres||[]).map(g=>g.name).join(" · ");const runtime=type==="movie"?(d.runtime?`${d.runtime} min`:""):(d.episode_run_time?.[0]?`${d.episode_run_time[0]} min/ep`:"");const trailer=(videos.results||[]).find(v=>v.site==="YouTube"&&v.type==="Trailer")||(videos.results||[]).find(v=>v.site==="YouTube");
+      const item={...d,media_type:type};
+      let watchData=null;
+      try { watchData=await api(`/${type}/${id}/watch/providers`); } catch(e) { console.warn("Watch provider data unavailable:",e.message); }
+      const bg=poster(d.backdrop_path,cfg.BACKDROP_SIZE||"w1280");const p=poster(d.poster_path);const title=escapeHTML(titleOf(d));const genres=(d.genres||[]).map(g=>g.name).join(" · ");const runtime=type==="movie"?(d.runtime?`${d.runtime} min`:""):(d.episode_run_time?.[0]?`${d.episode_run_time[0]} min/ep`:"");const trailer=(videos.results||[]).find(v=>v.site==="YouTube"&&v.type==="Trailer")||(videos.results||[]).find(v=>v.site==="YouTube");
       const cast=(credits.cast||[]).slice(0,12);const inWatch=has("watchlist",item),inFav=has("favorites",item),inWatched=has("watched",item);const ownRating=library.ratings[`${type}-${id}`]||"";
+      const watchHTML=renderWatchOptions(type,id,watchData);
       target.innerHTML=`<div class="detail-backdrop" style="background-image:url('${bg}')"></div><div class="detail-layout"><div>${p?`<img class="detail-poster" src="${p}" alt="${title} poster">`:""}</div><div class="detail-info"><p class="section-kicker">${type==="tv"?"SERIES SPOTLIGHT":"FEATURE PRESENTATION"}</p><h1>${title}</h1><div class="detail-tagline">${escapeHTML(d.tagline||"A story worth discovering.")}</div><div class="detail-facts"><span>★ ${Number(d.vote_average||0).toFixed(1)} / 10</span><span>${yearOf(d)||"Date TBA"}</span>${runtime?`<span>${runtime}</span>`:""}<span>${escapeHTML(genres)}</span></div><p class="detail-overview">${escapeHTML(d.overview||"No synopsis is available yet.")}</p><div class="detail-actions"><button class="primary-button" data-save="${id}" data-type="${type}">${inWatch?"✓ In watchlist":"＋ Watchlist"}</button><button class="glass-button" data-fav="${id}" data-type="${type}">${inFav?"♥ Favourited":"♡ Favourite"}</button><button class="glass-button" data-watched="${id}" data-type="${type}">${inWatched?"✓ Watched":"Mark watched"}</button></div><div class="detail-rating"><label for="personalRating">YOUR RATING</label> <select id="personalRating" data-rating="${id}" data-type="${type}"><option value="">Not rated</option>${[10,9,8,7,6,5,4,3,2,1].map(n=>`<option value="${n}" ${String(ownRating)===String(n)?"selected":""}>${n} / 10</option>`).join("")}</select></div></div></div>
+      ${watchHTML}
       ${trailer?`<section class="detail-section"><h2>Watch the trailer</h2><iframe class="video-frame" src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}" title="${title} trailer" loading="lazy" allowfullscreen></iframe></section>`:""}
       <section class="detail-section"><h2>Cast & faces</h2><div class="cast-row">${cast.map(c=>`<div class="cast-card">${c.profile_path?`<img loading="lazy" src="${poster(c.profile_path,"w185")}" alt="${escapeHTML(c.name)}">`:`<div class="cast-placeholder"></div>`}<b>${escapeHTML(c.name)}</b><span>${escapeHTML(c.character||"")}</span></div>`).join("")||"Cast information unavailable."}</div></section>
       <section class="detail-section"><h2>More like this</h2><div class="poster-row">${(recs.results||[]).slice(0,10).map(cardHTML).join("")||'<p class="poster-sub">No recommendations available yet.</p>'}</div></section>`;
